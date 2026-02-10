@@ -189,7 +189,7 @@ Automatically activates when battery level drops to 20% or below:
 - Check if the Thermal2 module is properly connected
 
 **Battery drains quickly:**
-- Enable Insomnia Mode is disabled (PWR button double-press should show no "INSOMNIA MODE" text)
+- Ensure Insomnia Mode is disabled (PWR button double-press should show no "INSOMNIA MODE" text)
 - Use screen blank mode when not actively viewing (enables Dowsing mode for LED indicators)
 - Disable WiFi when not needed (hold Button B)
 - Device automatically enters Low Power Mode at ≤20% battery

@@ -58,6 +58,12 @@ static uint32_t g_blank_last_frame_ms = 0;
 static uint8_t g_current_refresh_rate = 6;
 static bool g_pending_poweroff = false;
 static bool g_low_power_mode = false;
+static uint32_t g_dowsing_next_beep_ms = 0;
+static uint8_t g_dowsing_volume = 110;
+static bool g_dowsing_beep_mode = false;
+static float g_dowsing_baseline = 0.0f;
+static bool g_has_dowsing_baseline = false;
+static uint8_t g_poweroff_last_beep_sec = 255;
 static bool g_sound_active = false;
 static uint32_t g_sound_next_ms = 0;
 static uint8_t g_sound_index = 0;
@@ -67,14 +73,15 @@ static int g_sound_notes[4] = {0};
 static int g_sound_durations[4] = {0};
 
 static const uint32_t k_auto_poweroff_ms = 120000;
-static const uint32_t k_poweroff_warning_ms = 10000;
-static const char *k_wifi_placeholder = "Thermal Camera v0.7";
+static const uint32_t k_poweroff_warning_ms = 15000;
+static const char *k_wifi_placeholder = "ATSU v0.7.1";
 static const char *k_hotspot_ssid = "Thermal";
 static const uint32_t k_hotspot_timeout_ms = 5 * 60 * 1000;
 static const uint32_t k_blank_frame_interval_ms = 250;
 static const uint32_t k_dowsing_frame_interval_ms = 125;
 static const uint8_t k_sound_volume_normal = 120;
 static const uint8_t k_sound_volume_easter = 180;
+static const uint8_t k_sound_volume_soft = 90;
 
 
 static void recordActivity() {
@@ -112,6 +119,33 @@ static void applyLowPowerMode(bool enable) {
     M5.Led.setBrightness(0);
     M5.Led.setAllColor(0, 0, 0);
     thermal2.ledOff();
+}
+
+static uint8_t mapVolumeFromBrightness(uint8_t brightness) {
+    uint16_t vol = 40 + (brightness * 120) / 255;
+    if (vol > 255) vol = 255;
+    return static_cast<uint8_t>(vol);
+}
+
+static uint32_t computeDowsingIntervalMs(float contrast) {
+    if (contrast < 0.0f) contrast = 0.0f;
+    if (contrast > 10.0f) contrast = 10.0f;
+    float t = contrast / 10.0f;
+    return static_cast<uint32_t>(200 + t * 1000);
+}
+
+static int computeDowsingPitch(float temp, bool has_baseline, float baseline) {
+    if (has_baseline) {
+        temp = temp - baseline;
+        if (temp < -10.0f) temp = -10.0f;
+        if (temp > 10.0f) temp = 10.0f;
+        float t = (temp + 10.0f) / 20.0f;
+        return static_cast<int>(250 + t * 950);
+    }
+    if (temp < 0.0f) temp = 0.0f;
+    if (temp > 50.0f) temp = 50.0f;
+    float t = temp / 50.0f;
+    return static_cast<int>(200 + t * 1000);
 }
 
 static void disableWifi() {
@@ -204,18 +238,22 @@ static void playPoweroffChime() {
         M5.Power.powerOff();
         return;
     }
-    const int notes[] = {988, 784, 659};
-    const int durations[] = {100, 100, 140};
-    startToneSequence(notes, durations, 3, k_sound_volume_normal);
+    const int notes[] = {988, 880, 784, 659};
+    const int durations[] = {60, 60, 60, 80};
+    startToneSequence(notes, durations, 4, k_sound_volume_soft);
 }
 
 static void playBootChime() {
     if (!M5.Speaker.isEnabled()) return;
-    M5.Speaker.setVolume(k_sound_volume_normal);
-    M5.Speaker.tone(880, 80);
-    delay(100);
-    M5.Speaker.tone(1047, 120);
-    delay(140);
+    M5.Speaker.setVolume(k_sound_volume_soft);
+    M5.Speaker.tone(659, 60);
+    delay(70);
+    M5.Speaker.tone(784, 60);
+    delay(70);
+    M5.Speaker.tone(988, 60);
+    delay(70);
+    M5.Speaker.tone(1319, 80);
+    delay(90);
 }
 
 static void showLoadingScreen(const char *message) {
@@ -576,17 +614,22 @@ void loop(void) {
             }
         }
     } else if (M5.BtnB.wasHold()) {
-        if (g_low_power_mode) {
+        bool dowsing_hold = g_screen_blank && !g_night_mode && !g_low_power_mode;
+        bool easter_hold = g_easter_egg && !g_low_power_mode;
+        if (dowsing_hold || easter_hold) {
+            g_dowsing_beep_mode = !g_dowsing_beep_mode;
+            had_activity = true;
+        } else if (g_low_power_mode) {
             had_activity = true;
         } else {
-        if (g_wifi_connected) {
-            disableWifi();
-        } else if (!g_hotspot_mode) {
-            enableHotspot();
-        } else {
-            disableWifi();
-        }
-        had_activity = true;
+            if (g_wifi_connected) {
+                disableWifi();
+            } else if (!g_hotspot_mode) {
+                enableHotspot();
+            } else {
+                disableWifi();
+            }
+            had_activity = true;
         }
     } else if (M5.BtnB.wasSingleClicked()) {
         had_activity = true;
@@ -599,6 +642,9 @@ void loop(void) {
             g_brightness_index = (g_brightness_index + 1) % (int)(sizeof(k_levels) / sizeof(k_levels[0]));
             if (g_screen_blank || g_easter_egg) {
                 g_led_brightness = k_levels[g_brightness_index];
+                if (g_screen_blank && !g_easter_egg && !g_low_power_mode) {
+                    g_dowsing_volume = mapVolumeFromBrightness(g_led_brightness);
+                }
                 if (g_easter_egg) {
                     g_saved_brightness = k_levels[g_brightness_index];
                     M5.Display.setBrightness(g_saved_brightness);
@@ -611,7 +657,10 @@ void loop(void) {
     }
     if (M5.BtnA.wasPressed()) {
         had_activity = true;
-        if (g_night_mode) {
+        if (g_screen_blank && !g_night_mode && !g_easter_egg && !g_low_power_mode) {
+            g_dowsing_baseline = g_last_avg;
+            g_has_dowsing_baseline = true;
+        } else if (g_night_mode) {
             g_color_mode = (g_color_mode == 0) ? 1 : 0;
         } else {
             g_color_mode = (g_color_mode + 1) % 3;
@@ -646,6 +695,7 @@ void loop(void) {
     }
 
     bool dowsing_mode = g_screen_blank && !g_night_mode && !g_easter_egg && !g_low_power_mode;
+    bool dowsing_audio_active = dowsing_mode || (g_easter_egg && !g_low_power_mode);
     uint8_t desired_rate = 6;
     if (g_easter_egg) {
         desired_rate = 6;
@@ -722,7 +772,8 @@ void loop(void) {
                 info_canvas.setTextSize(1);
                 info_canvas.setTextColor(WHITE);
                 info_canvas.setTextDatum(TC_DATUM);
-                info_canvas.drawString("github.com/fitoori", g_screen_w / 2, 0);
+                info_canvas.drawString("IT'S A SECRET", g_screen_w / 2, 0);
+                info_canvas.drawString("TO EVERYONE", g_screen_w / 2, info_canvas.fontHeight() + 2);
                 info_canvas.setTextDatum(TL_DATUM);
             } else if (g_auto_poweroff_inhibit && !g_low_power_mode) {
                 info_canvas.setTextSize(1);
@@ -730,22 +781,6 @@ void loop(void) {
                 info_canvas.setTextDatum(TC_DATUM);
                 info_canvas.drawString("INSOMNIA MODE", g_screen_w / 2, 0);
                 info_canvas.setTextDatum(TL_DATUM);
-            }
-
-            if (!g_auto_poweroff_inhibit && !g_is_charging) {
-                uint32_t elapsed = now - g_last_activity_ms;
-                if (elapsed < k_auto_poweroff_ms) {
-                    uint32_t remaining = k_auto_poweroff_ms - elapsed;
-                    if (remaining <= k_poweroff_warning_ms) {
-                        uint32_t secs = (remaining + 999) / 1000;
-                        info_canvas.setTextSize(1);
-                        info_canvas.setTextColor(ORANGE);
-                        info_canvas.setTextDatum(TC_DATUM);
-                        info_canvas.drawString(String("OFF in ") + secs + "s",
-                                               g_screen_w / 2, 12);
-                        info_canvas.setTextDatum(TL_DATUM);
-                    }
-                }
             }
 
             info_canvas.setTextColor(ORANGE);
@@ -764,11 +799,11 @@ void loop(void) {
             info_canvas.setTextSize(1);
             int ip_h = info_canvas.fontHeight();
 
-            int temp_gap = 6;
+            int temp_gap = 12;
             int block_h = big_h + temp_gap + line_h * 3 + 6;
             int avail_h = g_info_h - ip_h - 6;
             if (avail_h < block_h) avail_h = block_h;
-            int start_y = (avail_h - block_h) / 2;
+            int start_y = (avail_h - block_h) / 2 + 7;
             int cx_text = g_screen_w / 2;
 
             info_canvas.setTextDatum(MC_DATUM);
@@ -813,6 +848,27 @@ void loop(void) {
                 info_canvas.drawString(k_wifi_placeholder, cx_text, bottom_y);
             }
 
+            if (!g_auto_poweroff_inhibit && !g_is_charging) {
+                uint32_t elapsed = now - g_last_activity_ms;
+                if (elapsed < k_auto_poweroff_ms) {
+                    uint32_t remaining = k_auto_poweroff_ms - elapsed;
+                    if (remaining <= k_poweroff_warning_ms) {
+                        uint32_t secs = (remaining + 999) / 1000;
+                        int warn_y = bottom_y - ip_h - 10;
+                        if (g_hotspot_mode) {
+                            warn_y = bottom_y - (ip_h + 2) * 2 - 8;
+                        }
+                        if (warn_y < 0) warn_y = 0;
+                        info_canvas.setTextSize(1);
+                        info_canvas.setTextColor(ORANGE);
+                        info_canvas.setTextDatum(TC_DATUM);
+                        info_canvas.drawString(String("OFF in ") + secs + "s",
+                                               cx_text, warn_y);
+                        info_canvas.setTextDatum(TL_DATUM);
+                    }
+                }
+            }
+
             info_canvas.setTextDatum(TL_DATUM);
 
             float rotation = getTextRotationDeg();
@@ -831,6 +887,31 @@ void loop(void) {
         delay(1);
     }
 
+    if (dowsing_audio_active && g_led_brightness > 0) {
+        int pitch = computeDowsingPitch(g_last_avg, g_has_dowsing_baseline, g_dowsing_baseline);
+        if (g_dowsing_beep_mode) {
+            uint32_t interval = computeDowsingIntervalMs(g_last_max - g_last_min);
+            if (g_dowsing_next_beep_ms == 0) {
+                g_dowsing_next_beep_ms = now;
+            }
+            if (!g_sound_active && !g_pending_poweroff && now >= g_dowsing_next_beep_ms) {
+                int notes[] = {pitch};
+                int durations[] = {50};
+                startToneSequence(notes, durations, 1, g_dowsing_volume);
+                g_dowsing_next_beep_ms = now + interval;
+            }
+        } else {
+            if (!g_sound_active && !g_pending_poweroff) {
+                int notes[] = {pitch};
+                int durations[] = {200};
+                startToneSequence(notes, durations, 1, g_dowsing_volume);
+            }
+            g_dowsing_next_beep_ms = 0;
+        }
+    } else {
+        g_dowsing_next_beep_ms = 0;
+    }
+
     server.handleClient();
 
     if (had_activity) {
@@ -845,8 +926,36 @@ void loop(void) {
     if (!g_auto_poweroff_inhibit && !g_is_charging) {
         if (!g_pending_poweroff && now_check - g_last_activity_ms >= k_auto_poweroff_ms) {
             g_pending_poweroff = true;
+            M5.Display.setBrightness(g_saved_brightness);
+            M5.Display.clear();
+            M5.Display.setTextDatum(MC_DATUM);
+            M5.Display.setTextColor(ORANGE);
+            M5.Display.setTextSize(2);
+            M5.Display.drawString("Goodbye!", g_screen_w / 2, g_screen_h / 2);
+            M5.Display.setTextDatum(TL_DATUM);
             playPoweroffChime();
         }
     }
+
+    if (!g_auto_poweroff_inhibit && !g_is_charging) {
+        uint32_t elapsed = now_check - g_last_activity_ms;
+        if (elapsed < k_auto_poweroff_ms) {
+            uint32_t remaining = k_auto_poweroff_ms - elapsed;
+            if (remaining <= 5000) {
+                uint8_t sec = static_cast<uint8_t>((remaining + 999) / 1000);
+                if (sec != g_poweroff_last_beep_sec) {
+                    g_poweroff_last_beep_sec = sec;
+                    if (!g_sound_active && M5.Speaker.isEnabled()) {
+                        int notes[] = {880};
+                        int durations[] = {40};
+                        startToneSequence(notes, durations, 1, k_sound_volume_soft);
+                    }
+                }
+            } else {
+                g_poweroff_last_beep_sec = 255;
+            }
+        }
+    }
 }
+
 

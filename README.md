@@ -69,7 +69,6 @@ To build your own ATSU, you will need:
 | Action | Function |
 |--------|----------|
 | **Button A** - Single press | Cycle color scheme (Grayscale → Iron → Rainbow) |
-| **Button A** - Hold (Rainbow mode) | Toggle easter egg mode |
 | **Button B** - Single press | Adjust brightness (6 levels: 40, 80, 120, 160, 200, 255) |
 | **Button B** - Double press | Toggle Night Mode |
 | **Button B** - Single press (Night Mode) | Toggle LED flashlight |
@@ -101,15 +100,13 @@ The device screen shows:
   - Battery level and charging status
   - Average, maximum, and minimum temperatures
   - WiFi/Hotspot IP address or version info
-  - Auto power-off countdown (when enabled)
-
+    
 ## Power Management
 
-- **Auto Power-off**: Device automatically powers off after 2 minutes of inactivity (disabled when charging)
+- **Auto Poweroff**: Device automatically powers off after 2 minutes of inactivity (disabled when charging)
 - **Hotspot Timeout**: Hotspot mode disables after 5 minutes of inactivity (disabled when charging)
 - **Screen Blank Mode**: Reduces power consumption while maintaining thermal data collection
-- **Power-off Warning**: 10-second countdown displayed before shutdown
-
+  
 ## Night Mode
 
 Night mode is optimized for use in dark environments:
@@ -130,7 +127,7 @@ Night mode is optimized for use in dark environments:
 - Check if the Thermal2 module is properly connected
 
 **Battery drains quickly:**
-- Enable auto power-off feature (PWR button double-press)
+- Enable auto poweroff feature (PWR button double-press)
 - Use screen blank mode when not actively viewing
 - Disable WiFi when not needed (hold Button B)
 

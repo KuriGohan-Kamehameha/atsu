@@ -65,8 +65,8 @@ static const uint32_t k_blank_frame_interval_ms = 250;
 static const uint8_t k_sound_volume_normal = 120;
 static const uint8_t k_sound_volume_easter = 180;
 
-static const char *WIFI_SSID = "IoTA";
-static const char *WIFI_PASS = "keyforaccesstothisrestrictedwirelessnnetwork";
+static const char *WIFI_SSID = "wifi-ssid";
+static const char *WIFI_PASS = "wifi-pass";
 
 static void recordActivity() {
     g_last_activity_ms = millis();

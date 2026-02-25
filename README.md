@@ -80,6 +80,7 @@ To build your own ATSU, you will need:
 | **Button B** - Double press | Toggle Night Mode |
 | **Button B** - Hold (WiFi connected) | Disable WiFi |
 | **Button B** - Hold (WiFi disconnected) | Enable Hotspot Mode |
+| **Button B** - Hold (Dowsing Mode) | Toggle audio mode (continuous tone ↔ beeping) |
 | **Button C** - Single press | Flip thermal image horizontally |
 | **PWR Button** - Single press | Toggle screen blank mode (saves battery, enables Dowsing mode) |
 | **PWR Button** - Double press | Toggle Insomnia Mode (disable/enable auto power-off) |
@@ -156,6 +157,11 @@ Activated automatically when screen blank mode is enabled (without Night Mode):
 - Color changes based on average temperature and contrast
 - Optimized 4Hz refresh rate for battery efficiency
 - Useful for finding heat sources without looking at the screen
+- **Audio Feedback**: Provides temperature-based audio tones
+  - **Continuous Tone Mode** (default): Steady tone that changes pitch based on temperature
+  - **Beeping Mode**: Intermittent beeps with frequency varying by temperature contrast
+  - Toggle between modes by holding Button B while in Dowsing Mode
+  - Pitch and interval dynamically adjust to thermal readings for intuitive feedback
 
 ## Insomnia Mode
 
